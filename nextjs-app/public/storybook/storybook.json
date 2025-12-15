@@ -1,0 +1,81 @@
+{
+  "title": "Newton and the Apple",
+  "description": "Learn how Isaac Newton discovered gravity!",
+  "pages": [
+    {
+      "page_number": 1,
+      "sentence": "Young Isaac sat under a tree.",
+      "words": [
+        "Young",
+        "Isaac",
+        "sat",
+        "under",
+        "a",
+        "tree"
+      ],
+      "image": "scene_1.png"
+    },
+    {
+      "page_number": 2,
+      "sentence": "A yummy red apple fell.",
+      "words": [
+        "A",
+        "yummy",
+        "red",
+        "apple",
+        "fell"
+      ],
+      "image": "scene_2.png"
+    },
+    {
+      "page_number": 3,
+      "sentence": "\"Why did it fall?\" he wondered.",
+      "words": [
+        "\"Why",
+        "did",
+        "it",
+        "fall\"",
+        "he",
+        "wondered"
+      ],
+      "image": "scene_3.png"
+    },
+    {
+      "page_number": 4,
+      "sentence": "Isaac thought about it deeply.",
+      "words": [
+        "Isaac",
+        "thought",
+        "about",
+        "it",
+        "deeply"
+      ],
+      "image": "scene_4.png"
+    },
+    {
+      "page_number": 5,
+      "sentence": "He called this pull 'gravity'.",
+      "words": [
+        "He",
+        "called",
+        "this",
+        "pull",
+        "'gravity'"
+      ],
+      "image": "scene_5.png"
+    },
+    {
+      "page_number": 6,
+      "sentence": "Gravity pulls things to the ground.",
+      "words": [
+        "Gravity",
+        "pulls",
+        "things",
+        "to",
+        "the",
+        "ground"
+      ],
+      "image": "scene_6.png"
+    }
+  ]
+}
