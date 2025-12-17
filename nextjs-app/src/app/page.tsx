@@ -7,20 +7,60 @@ import { WritingPhase } from "@/components/WritingPhase";
 import { speakText } from "@/lib/gemini";
 import type { Storybook, LearningPhase } from "@/types";
 
-// Welcome screen - needed to enable audio (browser autoplay policy)
-function WelcomeScreen({ onStart }: { onStart: () => void }) {
+// Book selection screen - first screen user sees
+function BookSelectionScreen({
+  storybook,
+  onSelect,
+}: {
+  storybook: Storybook;
+  onSelect: () => void;
+}) {
+  // Get first page image as cover
+  const coverImage = storybook.pages[0]?.image;
+
   return (
-    <div className="card max-w-lg w-full text-center">
-      <div className="text-8xl mb-6">📚</div>
-      <h1 className="text-4xl font-bold text-primary mb-4">
-        Let's Learn to Read!
+    <div className="max-w-4xl w-full">
+      <h1 className="text-4xl font-bold text-primary mb-8 text-center">
+        Choose a Book
       </h1>
-      <p className="text-xl text-gray-700 mb-8">
-        Click the button to start
-      </p>
-      <button onClick={onStart} className="btn-primary text-2xl btn-glow">
-        Start!
-      </button>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Book card */}
+        <button
+          onClick={onSelect}
+          className="card hover:shadow-2xl transform transition hover:scale-105 text-left p-0 overflow-hidden"
+        >
+          {/* Book cover image */}
+          {coverImage ? (
+            <img
+              src={`/storybook/${coverImage}`}
+              alt={storybook.title}
+              className="w-full h-48 object-cover"
+            />
+          ) : (
+            <div className="w-full h-48 bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+              <span className="text-6xl">📖</span>
+            </div>
+          )}
+
+          {/* Book info */}
+          <div className="p-4">
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              {storybook.title}
+            </h2>
+            <p className="text-gray-600">{storybook.description}</p>
+            <p className="text-sm text-gray-400 mt-2">
+              {storybook.pages.length} pages
+            </p>
+          </div>
+        </button>
+
+        {/* Placeholder for more books - shows "coming soon" */}
+        <div className="card bg-gray-100 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-center p-8 opacity-60">
+          <span className="text-4xl mb-2">📚</span>
+          <p className="text-gray-500 font-medium">More books coming soon!</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -72,6 +112,181 @@ function NameInputScreen({
           Let's Go!
         </button>
       </form>
+    </div>
+  );
+}
+
+// Main menu with three activity options
+type AppMode = "menu" | "read_together" | "learn_to_read" | "writing_practice";
+
+function MainMenuScreen({
+  childName,
+  onSelectMode,
+}: {
+  childName: string;
+  onSelectMode: (mode: AppMode) => void;
+}) {
+  return (
+    <div className="card max-w-2xl w-full text-center">
+      <div className="text-6xl mb-4">📚</div>
+      <h1 className="text-4xl font-bold text-primary mb-2">
+        Hi {childName}!
+      </h1>
+      <p className="text-xl text-gray-700 mb-8">
+        What would you like to do today?
+      </p>
+
+      <div className="flex flex-col gap-4">
+        <button
+          onClick={() => onSelectMode("read_together")}
+          className="btn-primary text-xl py-6 btn-glow flex items-center justify-center gap-3"
+        >
+          <span className="text-3xl">📖</span>
+          <span>Read the Storybook Together</span>
+        </button>
+
+        <button
+          onClick={() => onSelectMode("learn_to_read")}
+          className="btn-secondary text-xl py-6 btn-glow-secondary flex items-center justify-center gap-3"
+        >
+          <span className="text-3xl">🎓</span>
+          <span>Learn How to Read</span>
+        </button>
+
+        <button
+          onClick={() => onSelectMode("writing_practice")}
+          className="btn-accent text-xl py-6 btn-glow-accent flex items-center justify-center gap-3"
+        >
+          <span className="text-3xl">✏️</span>
+          <span>Learn How to Write</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Read Together mode - listen to the whole book
+function ReadTogetherPage({
+  page,
+  pageNumber,
+  totalPages,
+  childName,
+  onNext,
+  onBack,
+  onBackToMenu,
+}: {
+  page: { sentence: string; image: string | null; page_number: number };
+  pageNumber: number;
+  totalPages: number;
+  childName: string;
+  onNext: () => void;
+  onBack: () => void;
+  onBackToMenu: () => void;
+}) {
+  const hasPlayedRef = useRef(false);
+  const lastPageRef = useRef(pageNumber);
+
+  useEffect(() => {
+    // Play audio when page changes
+    if (lastPageRef.current !== pageNumber) {
+      hasPlayedRef.current = false;
+      lastPageRef.current = pageNumber;
+    }
+
+    if (!hasPlayedRef.current) {
+      hasPlayedRef.current = true;
+      speakText(page.sentence);
+    }
+  }, [page.sentence, pageNumber]);
+
+  const handleReadAgain = () => {
+    speakText(page.sentence);
+  };
+
+  const isLastPage = pageNumber === totalPages;
+  const isFirstPage = pageNumber === 1;
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <header className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={onBackToMenu}
+            className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
+          >
+            <span className="text-2xl">←</span>
+            <span>Menu</span>
+          </button>
+          <span className="text-lg text-gray-600">
+            Page {pageNumber} of {totalPages}
+          </span>
+        </div>
+
+        {/* Progress bar */}
+        <div className="progress-bar">
+          <div
+            className="progress-fill"
+            style={{ width: `${(pageNumber / totalPages) * 100}%` }}
+          />
+        </div>
+      </header>
+
+      {/* Content */}
+      <div className="flex flex-col items-center gap-6 slide-up">
+        {/* Story Image */}
+        {page.image && (
+          <div className="w-full max-w-md">
+            <img
+              src={`/storybook/${page.image}`}
+              alt="Story illustration"
+              className="w-full h-64 object-cover rounded-2xl shadow-xl border-4 border-white"
+            />
+          </div>
+        )}
+
+        {/* Sentence card */}
+        <div className="card max-w-2xl w-full text-center">
+          <p className="text-4xl font-bold text-gray-800 leading-relaxed">
+            {page.sentence}
+          </p>
+        </div>
+
+        {/* Controls */}
+        <div className="flex flex-wrap gap-4 justify-center">
+          {!isFirstPage && (
+            <button
+              onClick={onBack}
+              className="btn-secondary text-xl"
+            >
+              ← Back
+            </button>
+          )}
+
+          <button
+            onClick={handleReadAgain}
+            className="bg-accent hover:bg-accent/80 text-gray-800 font-bold py-3 px-6 rounded-xl shadow-lg transform transition hover:scale-105 text-xl"
+          >
+            🔊 Read Again
+          </button>
+
+          {isLastPage ? (
+            <button
+              onClick={onBackToMenu}
+              className="btn-primary text-xl btn-glow"
+            >
+              Finish! 🎉
+            </button>
+          ) : (
+            <button
+              onClick={onNext}
+              className="btn-primary text-xl btn-glow"
+            >
+              Next →
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -130,7 +345,8 @@ export default function Home() {
   const [childName, setChildName] = useState("");
   const [isNameSet, setIsNameSet] = useState(false);
   const [showChoice, setShowChoice] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
+  const [isBookSelected, setIsBookSelected] = useState(false);
+  const [appMode, setAppMode] = useState<AppMode>("menu");
 
   // Load storybook and check for server-side API key on mount
   useEffect(() => {
@@ -220,15 +436,44 @@ export default function Home() {
     [currentPage, apiKey]
   );
 
-  // Handle name submission - go straight to reading
+  // Handle book selection
+  const handleBookSelect = () => {
+    setIsBookSelected(true);
+  };
+
+  // Handle name submission - go to main menu
   const handleNameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (childName.trim() && currentPage) {
+    if (childName.trim()) {
       setIsNameSet(true);
-      setPhase("reading");
-      // Combined intro: greet, read the sentence, then tell them to read it
-      await speakText(`Hello ${childName}! Let's read together. Here's the sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
+      // Menu audio will play from MainMenuScreen component
     }
+  };
+
+  // Handle mode selection from main menu
+  const handleSelectMode = async (mode: AppMode) => {
+    setAppMode(mode);
+    setCurrentPageIndex(0);
+
+    if (mode === "read_together" && currentPage) {
+      setPhase("intro");
+      await speakText(`Let's read the story together, ${childName}! I'll read each page to you.`);
+    } else if (mode === "learn_to_read" && currentPage) {
+      setPhase("reading");
+      await speakText(`Let's learn to read, ${childName}! Here's the first sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
+    } else if (mode === "writing_practice" && currentPage) {
+      setPhase("writing");
+      await speakText(`Let's practice writing, ${childName}! Try to write this sentence.`);
+    }
+  };
+
+  // Return to main menu
+  const handleBackToMenu = () => {
+    setAppMode("menu");
+    setCurrentPageIndex(0);
+    setPhase("intro");
+    setShowStoryComplete(false);
+    setShowChoice(false);
   };
 
   // Phase transitions
@@ -289,6 +534,31 @@ export default function Home() {
     setShowStoryComplete(false);
   };
 
+  // Read Together mode navigation
+  const handleReadTogetherNext = () => {
+    if (currentPageIndex < totalPages - 1) {
+      setCurrentPageIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleReadTogetherBack = () => {
+    if (currentPageIndex > 0) {
+      setCurrentPageIndex((prev) => prev - 1);
+    }
+  };
+
+  // Writing Practice mode navigation
+  const handleWritingPracticeComplete = async () => {
+    if (currentPageIndex < totalPages - 1) {
+      setCurrentPageIndex((prev) => prev + 1);
+      const nextPage = storybook?.pages[currentPageIndex + 1];
+      await speakText(`Great job ${childName}! Now try writing this sentence.`);
+    } else {
+      setShowStoryComplete(true);
+      await speakText(`Amazing ${childName}! You wrote the whole story!`);
+    }
+  };
+
   // Loading state
   if (!storybook) {
     return (
@@ -345,20 +615,85 @@ export default function Home() {
     );
   }
 
-  // Welcome screen (enables audio via user interaction)
-  if (!hasStarted) {
+  // Book selection screen (first screen after API key)
+  if (!isBookSelected) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        <WelcomeScreen onStart={() => setHasStarted(true)} />
+        <BookSelectionScreen storybook={storybook} onSelect={handleBookSelect} />
       </main>
     );
   }
 
-  // Name input screen
+  // Name input screen (after book selection)
   if (!isNameSet) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <NameInputScreen onSubmit={handleNameSubmit} childName={childName} setChildName={setChildName} />
+      </main>
+    );
+  }
+
+  // Main menu screen
+  if (appMode === "menu") {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <MainMenuScreen childName={childName} onSelectMode={handleSelectMode} />
+      </main>
+    );
+  }
+
+  // Read Together mode
+  if (appMode === "read_together" && currentPage) {
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <ReadTogetherPage
+          page={currentPage}
+          pageNumber={currentPageIndex + 1}
+          totalPages={totalPages}
+          childName={childName}
+          onNext={handleReadTogetherNext}
+          onBack={handleReadTogetherBack}
+          onBackToMenu={handleBackToMenu}
+        />
+      </main>
+    );
+  }
+
+  // Writing Practice mode
+  if (appMode === "writing_practice" && currentPage) {
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="max-w-4xl mx-auto">
+          {/* Header */}
+          <header className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={handleBackToMenu}
+                className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
+              >
+                <span className="text-2xl">←</span>
+                <span>Menu</span>
+              </button>
+              <span className="text-lg text-gray-600">
+                Page {currentPageIndex + 1} of {totalPages}
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="progress-bar">
+              <div
+                className="progress-fill"
+                style={{ width: `${((currentPageIndex + 1) / totalPages) * 100}%` }}
+              />
+            </div>
+          </header>
+
+          <WritingPhase
+            sentence={currentPage.sentence}
+            words={currentPage.words}
+            onComplete={handleWritingPracticeComplete}
+          />
+        </div>
       </main>
     );
   }
@@ -379,7 +714,10 @@ export default function Home() {
             <p className="text-xl text-gray-600">Pages completed:</p>
             <p className="text-6xl font-bold text-primary">{totalPages}</p>
           </div>
-          <div>
+          <div className="flex gap-4 justify-center">
+            <button onClick={handleBackToMenu} className="btn-secondary">
+              Back to Menu
+            </button>
             <button onClick={handleRestart} className="btn-primary">
               Read Again!
             </button>
@@ -421,14 +759,24 @@ export default function Home() {
     );
   }
 
+  // Learn to Read mode (default fallback for existing flow)
   return (
     <main className="min-h-screen p-4 md:p-8">
       {/* Header */}
       <header className="max-w-4xl mx-auto mb-6">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-primary">{storybook.title}</h1>
-            <p className="text-lg text-gray-500">Reading with {childName}</p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleBackToMenu}
+              className="text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            >
+              <span className="text-xl">←</span>
+              <span>Menu</span>
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-primary">{storybook.title}</h1>
+              <p className="text-lg text-gray-500">Learning with {childName}</p>
+            </div>
           </div>
           <span className="text-lg text-gray-600">
             Page {currentPageIndex + 1} of {totalPages}

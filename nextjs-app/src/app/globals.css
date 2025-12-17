@@ -37,6 +37,12 @@ body {
   @apply active:scale-95;
 }
 
+.btn-accent {
+  @apply bg-accent text-gray-800 px-6 py-3 rounded-full text-xl font-bold;
+  @apply shadow-lg hover:shadow-xl transform hover:scale-105 transition-all;
+  @apply active:scale-95;
+}
+
 /* Card styles */
 .card {
   @apply bg-white rounded-3xl shadow-xl p-6;
@@ -206,6 +212,26 @@ body {
 
 .btn-glow-secondary {
   animation: glow-pulse-secondary 1.5s ease-in-out infinite;
+}
+
+/* Accent button glow (yellow) */
+@keyframes glow-pulse-accent {
+  0%, 100% {
+    box-shadow: 0 0 5px 2px rgba(255, 230, 109, 0.4),
+                0 0 20px 5px rgba(255, 230, 109, 0.3),
+                0 0 30px 10px rgba(255, 230, 109, 0.2);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 10px 5px rgba(255, 230, 109, 0.6),
+                0 0 30px 10px rgba(255, 230, 109, 0.4),
+                0 0 50px 20px rgba(255, 230, 109, 0.3);
+    transform: scale(1.05);
+  }
+}
+
+.btn-glow-accent {
+  animation: glow-pulse-accent 1.5s ease-in-out infinite;
 }
 
 /* Input box glow */

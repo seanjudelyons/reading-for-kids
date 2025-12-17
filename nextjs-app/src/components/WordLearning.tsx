@@ -49,6 +49,7 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
     setIsPlaying(false);
     await speakText(`Now let's see if you know the words, ${childName}! What word is this?`);
     // Auto-start listening after the prompt
+    console.log("[WordLearning] Quiz phase starting, auto-starting listening");
     resetTranscript();
     startListening();
   }, [words, isPlaying, childName, resetTranscript, startListening]);
@@ -88,10 +89,28 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
 
   // Handle quiz answer
   const handleCheckAnswer = async () => {
+    console.log("[WordLearning] handleCheckAnswer called");
+    console.log("[WordLearning] isListening:", isListening);
+    console.log("[WordLearning] transcript before stop:", transcript);
+
     const result = stopListening();
-    if (!result?.transcript) return;
+    console.log("[WordLearning] stopListening result:", result);
+
+    if (!result?.transcript) {
+      console.log("[WordLearning] No transcript, returning early");
+      // Still allow moving forward even without transcript
+      setQuizFeedback("I didn't hear anything. Try again!");
+      await speakText("I didn't hear anything. Try again!");
+      setTimeout(() => {
+        setQuizFeedback(null);
+        resetTranscript();
+        startListening();
+      }, 1500);
+      return;
+    }
 
     const spoken = result.transcript;
+    console.log("[WordLearning] Spoken:", spoken, "Expected:", currentWord);
     const closeness = getCloseness(spoken, currentWord);
     const isExact = closeness === "exact";
     const isClose = closeness === "close";
