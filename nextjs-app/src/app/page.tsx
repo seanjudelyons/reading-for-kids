@@ -7,6 +7,24 @@ import { WritingPhase } from "@/components/WritingPhase";
 import { speakText } from "@/lib/gemini";
 import type { Storybook, LearningPhase } from "@/types";
 
+// Welcome screen - needed to enable audio (browser autoplay policy)
+function WelcomeScreen({ onStart }: { onStart: () => void }) {
+  return (
+    <div className="card max-w-lg w-full text-center">
+      <div className="text-8xl mb-6">📚</div>
+      <h1 className="text-4xl font-bold text-primary mb-4">
+        Let's Learn to Read!
+      </h1>
+      <p className="text-xl text-gray-700 mb-8">
+        Click the button to start
+      </p>
+      <button onClick={onStart} className="btn-primary text-2xl btn-glow">
+        Start!
+      </button>
+    </div>
+  );
+}
+
 // Name input component with audio guidance
 function NameInputScreen({
   onSubmit,
@@ -18,7 +36,7 @@ function NameInputScreen({
   setChildName: (name: string) => void;
 }) {
   const hasPlayedRef = useRef(false);
-  const [showButtonGlow, setShowButtonGlow] = useState(false);
+  const showButtonGlow = childName.trim().length > 0;
 
   useEffect(() => {
     if (!hasPlayedRef.current) {
@@ -26,15 +44,6 @@ function NameInputScreen({
       speakText("Hello! What's your name? Type it in the box.");
     }
   }, []);
-
-  // Show button glow when name is entered
-  useEffect(() => {
-    if (childName.trim()) {
-      setShowButtonGlow(true);
-    } else {
-      setShowButtonGlow(false);
-    }
-  }, [childName]);
 
   return (
     <div className="card max-w-lg w-full text-center">
@@ -121,6 +130,7 @@ export default function Home() {
   const [childName, setChildName] = useState("");
   const [isNameSet, setIsNameSet] = useState(false);
   const [showChoice, setShowChoice] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
   // Load storybook and check for server-side API key on mount
   useEffect(() => {
@@ -210,12 +220,14 @@ export default function Home() {
     [currentPage, apiKey]
   );
 
-  // Handle name submission
+  // Handle name submission - go straight to reading
   const handleNameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (childName.trim()) {
+    if (childName.trim() && currentPage) {
       setIsNameSet(true);
-      await speakText(`Hello ${childName}! Let's learn to read together! Click the Start Reading button.`);
+      setPhase("reading");
+      // Combined intro: greet, read the sentence, then tell them to read it
+      await speakText(`Hello ${childName}! Let's read together. Here's the sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
     }
   };
 
@@ -233,9 +245,11 @@ export default function Home() {
   const handleChooseNextSentence = async () => {
     setShowChoice(false);
     if (currentPageIndex < totalPages - 1) {
+      const nextPage = storybook?.pages[currentPageIndex + 1];
       setCurrentPageIndex((prev) => prev + 1);
-      setPhase("intro");
-      await speakText(`Great job ${childName}! Let's read the next sentence.`);
+      setPhase("reading");
+      // Go straight to reading the next sentence
+      await speakText(`Great job ${childName}! Here's the next sentence: ${nextPage?.sentence}. Now you read it!`);
     } else {
       setShowStoryComplete(true);
       await speakText(`Congratulations ${childName}! You finished the whole story!`);
@@ -250,9 +264,11 @@ export default function Home() {
 
   const handleWritingComplete = async () => {
     if (currentPageIndex < totalPages - 1) {
+      const nextPage = storybook?.pages[currentPageIndex + 1];
       setCurrentPageIndex((prev) => prev + 1);
-      setPhase("intro");
-      await speakText(`Excellent ${childName}! On to the next page.`);
+      setPhase("reading");
+      // Go straight to reading the next sentence
+      await speakText(`Excellent ${childName}! Here's the next sentence: ${nextPage?.sentence}. Now you read it!`);
     } else {
       setShowStoryComplete(true);
       await speakText(`Congratulations ${childName}! You finished the whole story!`);
@@ -261,6 +277,7 @@ export default function Home() {
 
   const handleStartPage = async () => {
     if (currentPage) {
+      // Play the sentence, then switch to reading phase
       await speakText(currentPage.sentence);
       setPhase("reading");
     }
@@ -324,6 +341,15 @@ export default function Home() {
             Skip (use basic mode)
           </button>
         </div>
+      </main>
+    );
+  }
+
+  // Welcome screen (enables audio via user interaction)
+  if (!hasStarted) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <WelcomeScreen onStart={() => setHasStarted(true)} />
       </main>
     );
   }

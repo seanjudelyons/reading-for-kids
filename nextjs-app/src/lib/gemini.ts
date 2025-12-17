@@ -277,7 +277,12 @@ export async function speakText(text: string): Promise<void> {
       }
     }
   } catch (error) {
-    console.error("Gemini TTS error:", error);
+    // Silently handle autoplay errors (NotAllowedError) - these are expected before user interaction
+    if (error instanceof Error && error.name === "NotAllowedError") {
+      return;
+    }
+    // Only log unexpected errors
+    console.error("TTS error:", error);
   }
 
   // Fallback to browser TTS

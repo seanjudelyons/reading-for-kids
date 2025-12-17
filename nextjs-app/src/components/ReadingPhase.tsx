@@ -34,43 +34,46 @@ export function ReadingPhase({
     resetTranscript,
   } = useSpeechRecognition({ targetSentence: sentence });
 
-  // Auto-start listening when component mounts
+  // Auto-start listening when component mounts (intro already spoken by parent)
   useEffect(() => {
     if (!hasStartedRef.current) {
       hasStartedRef.current = true;
-      const startReading = async () => {
-        resetTranscript();
-        await speakText(`Now read the sentence out loud, ${childName}. Click Done when you're finished.`);
-        startListening();
-      };
-      startReading();
+      resetTranscript();
+      startListening();
     }
-  }, [childName, resetTranscript, startListening]);
+  }, [resetTranscript, startListening]);
 
   const handleStopReading = async () => {
     const result = stopListening();
-    if (result && result.transcript) {
-      setIsVerifying(true);
-      try {
-        const verification = await onVerify(result.transcript);
+    const spokenText = result?.transcript || "";
+
+    setIsVerifying(true);
+    try {
+      if (spokenText) {
+        const verification = await onVerify(spokenText);
         setFeedback(verification.encouragement);
         setIsCorrect(verification.isCorrect);
-
-        // Speak the feedback
         await speakText(verification.encouragement);
-
-        if (verification.isCorrect) {
-          // Wait a moment then continue
-          setTimeout(() => {
-            onComplete(result.transcript);
-          }, 1500);
-        }
-      } catch (err) {
-        console.error("Verification error:", err);
-        setFeedback("Let's try again!");
+      } else {
+        // No speech detected - still move forward with encouragement
+        setFeedback("Good try! Let's keep going!");
+        setIsCorrect(true);
+        await speakText("Good try! Let's keep going!");
       }
-      setIsVerifying(false);
+
+      // Always move forward after a moment - don't get stuck
+      setTimeout(() => {
+        onComplete(spokenText);
+      }, 1500);
+    } catch (err) {
+      console.error("Verification error:", err);
+      setFeedback("Let's keep going!");
+      await speakText("Let's keep going!");
+      setTimeout(() => {
+        onComplete(spokenText);
+      }, 1500);
     }
+    setIsVerifying(false);
   };
 
   const handleTryAgain = () => {
@@ -141,7 +144,7 @@ export function ReadingPhase({
                 className="btn-secondary"
                 disabled={isVerifying}
               >
-                Done Reading
+                Done
               </button>
             ) : isCorrect === false ? (
               <button onClick={handleTryAgain} className="btn-primary btn-glow">

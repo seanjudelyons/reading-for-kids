@@ -146,12 +146,6 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
     }
   };
 
-  const handleStartListening = () => {
-    resetTranscript();
-    setQuizFeedback(null);
-    setIsCorrect(null);
-    startListening();
-  };
 
   // Learning Phase - Show all words, highlight current one being spoken
   if (phase === "learning") {
@@ -211,9 +205,17 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
       </div>
 
       <div className="card max-w-2xl w-full text-center">
-        <h2 className="text-2xl font-bold text-gray-600 mb-4">
-          What word is this?
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold text-gray-600">
+            What word is this?
+          </h2>
+          <button
+            onClick={() => speakText(sentence)}
+            className="text-sm px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 flex items-center gap-1"
+          >
+            🔊 Hear Sentence
+          </button>
+        </div>
 
         {/* Show the word to identify */}
         <div className="text-6xl font-bold text-primary py-8 px-10 bg-accent/20 rounded-2xl inline-block">
@@ -243,22 +245,17 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-4">
-        {!isListening && !quizFeedback && (
-          <button onClick={handleStartListening} className="btn-primary">
-            Say the Word
-          </button>
-        )}
+      <div className="flex flex-col items-center gap-4">
         {isListening && (
-          <>
-            <div className="flex items-center gap-3">
-              <div className="recording-pulse w-6 h-6 bg-red-500 rounded-full" />
-              <span className="text-xl font-bold text-red-500">Listening...</span>
-            </div>
-            <button onClick={handleCheckAnswer} className="btn-secondary">
-              Done
-            </button>
-          </>
+          <div className="flex items-center gap-3">
+            <div className="recording-pulse w-6 h-6 bg-red-500 rounded-full" />
+            <span className="text-xl font-bold text-red-500">Listening...</span>
+          </div>
+        )}
+        {!quizFeedback && (
+          <button onClick={handleCheckAnswer} className="btn-primary">
+            Done
+          </button>
         )}
       </div>
     </div>
