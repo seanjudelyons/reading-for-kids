@@ -123,25 +123,19 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
 
       setQuizFeedback(feedbackMessage);
 
-      // Shorter, combined TTS message
+      // Encourage them to try again
       const spokenFeedback = isClose
-        ? `So close ${childName}! The word is ${currentWord}. Let's keep going!`
-        : `You said ${spoken}. This word is ${currentWord}. Let's try the next one!`;
+        ? `So close ${childName}! The word is ${currentWord}. Try again!`
+        : `You said ${spoken}. This word is ${currentWord}. Let's try again!`;
 
       await speakText(spokenFeedback);
 
-      // Move on to keep it encouraging
-      setTimeout(async () => {
-        if (currentWordIndex < words.length - 1) {
-          setCurrentWordIndex(prev => prev + 1);
-          setQuizFeedback(null);
-          setIsCorrect(null);
-          resetTranscript();
-          startListening();
-        } else {
-          await speakText(`Great effort ${childName}! Let's move on.`);
-          setTimeout(onComplete, 1500);
-        }
+      // Let them try the same word again
+      setTimeout(() => {
+        setQuizFeedback(null);
+        setIsCorrect(null);
+        resetTranscript();
+        startListening();
       }, 1500);
     }
   };
