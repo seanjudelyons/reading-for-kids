@@ -229,37 +229,13 @@ export function playBase64Audio(base64Data: string): Promise<void> {
 // Track current audio element to allow cancellation
 let currentAudio: HTMLAudioElement | null = null;
 
-// Stop any currently playing speech
-export function stopSpeech(): void {
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio.currentTime = 0;
-    currentAudio = null;
-  }
-}
+// Audio cache for preloaded phrases
+const audioCache = new Map<string, string>();
 
-// Browser TTS fallback
-function browserSpeak(text: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof speechSynthesis === "undefined") {
-      resolve();
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.1;
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
-    speechSynthesis.speak(utterance);
-  });
-}
-
-// Main speak function - tries Gemini TTS, falls back to browser
-export async function speakText(text: string): Promise<void> {
-  // Stop any currently playing speech first
-  stopSpeech();
-  if (typeof speechSynthesis !== "undefined") {
-    speechSynthesis.cancel();
+// Preload audio for a phrase (stores base64 WAV in cache)
+export async function preloadAudio(text: string): Promise<void> {
+  if (audioCache.has(text)) {
+    return; // Already cached
   }
 
   try {
@@ -272,7 +248,65 @@ export async function speakText(text: string): Promise<void> {
     if (response.ok) {
       const data = await response.json();
       if (data.audio) {
-        await playBase64AudioWithTracking(data.audio);
+        // Convert PCM to WAV and cache it
+        const wavBase64 = pcmToWav(data.audio);
+        audioCache.set(text, wavBase64);
+      }
+    }
+  } catch (error) {
+    console.error("Preload error:", error);
+  }
+}
+
+// Preload multiple phrases in parallel
+export async function preloadAudioBatch(phrases: string[]): Promise<void> {
+  await Promise.all(phrases.map((phrase) => preloadAudio(phrase)));
+}
+
+// Check if audio is cached
+export function isAudioCached(text: string): boolean {
+  return audioCache.has(text);
+}
+
+// Stop any currently playing speech
+export function stopSpeech(): void {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio = null;
+  }
+}
+
+// Main speak function - uses cache first, then Gemini TTS
+export async function speakText(text: string): Promise<void> {
+  // Stop any currently playing speech first
+  stopSpeech();
+
+  // Check cache first for instant playback
+  if (audioCache.has(text)) {
+    try {
+      await playWavAudioWithTracking(audioCache.get(text)!);
+      return;
+    } catch (error) {
+      // If cached playback fails, continue to fetch
+      console.error("Cached audio playback failed:", error);
+    }
+  }
+
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.audio) {
+        // Cache for future use
+        const wavBase64 = pcmToWav(data.audio);
+        audioCache.set(text, wavBase64);
+        await playWavAudioWithTracking(wavBase64);
         return;
       }
     }
@@ -284,12 +318,33 @@ export async function speakText(text: string): Promise<void> {
     // Only log unexpected errors
     console.error("TTS error:", error);
   }
-
-  // Fallback to browser TTS
-  await browserSpeak(text);
 }
 
-// Helper to play audio with tracking for cancellation
+// Helper to play already-converted WAV audio with tracking
+function playWavAudioWithTracking(wavBase64: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const audio = new Audio(`data:audio/wav;base64,${wavBase64}`);
+      currentAudio = audio;
+      audio.onended = () => {
+        currentAudio = null;
+        resolve();
+      };
+      audio.onerror = (e) => {
+        currentAudio = null;
+        reject(e);
+      };
+      audio.play().catch((e) => {
+        currentAudio = null;
+        reject(e);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// Helper to play PCM audio with tracking for cancellation (converts to WAV first)
 function playBase64AudioWithTracking(base64Data: string): Promise<void> {
   return new Promise((resolve, reject) => {
     try {

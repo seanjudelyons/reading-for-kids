@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ReadingPhase } from "@/components/ReadingPhase";
 import { WordLearning } from "@/components/WordLearning";
 import { WritingPhase } from "@/components/WritingPhase";
-import { speakText } from "@/lib/gemini";
+import { speakText, preloadAudioBatch } from "@/lib/gemini";
 import type { Storybook, LearningPhase } from "@/types";
 
 // Book selection screen - first screen user sees
@@ -347,6 +347,8 @@ export default function Home() {
   const [showChoice, setShowChoice] = useState(false);
   const [isBookSelected, setIsBookSelected] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>("menu");
+  const [isLoadingMode, setIsLoadingMode] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
 
   // Load storybook and check for server-side API key on mount
   useEffect(() => {
@@ -387,6 +389,21 @@ export default function Home() {
   // Current page data
   const currentPage = storybook?.pages[currentPageIndex];
   const totalPages = storybook?.pages.length || 0;
+
+  // Preload common audio phrases when API key is set
+  useEffect(() => {
+    if (isApiKeySet && storybook) {
+      // Preload static phrases that we know will be used
+      const commonPhrases = [
+        "Hello! What's your name? Type it in the box.",
+      ];
+
+      // Preload all story sentences
+      const storySentences = storybook.pages.map((page) => page.sentence);
+
+      preloadAudioBatch([...commonPhrases, ...storySentences]);
+    }
+  }, [isApiKeySet, storybook]);
 
   // Handle API key submission
   const handleApiKeySubmit = (e: React.FormEvent) => {
@@ -452,18 +469,30 @@ export default function Home() {
 
   // Handle mode selection from main menu
   const handleSelectMode = async (mode: AppMode) => {
-    setAppMode(mode);
     setCurrentPageIndex(0);
 
-    if (mode === "read_together" && currentPage) {
+    if (mode === "read_together") {
+      // Show loading screen with intro message
+      setIsLoadingMode(true);
+      setLoadingMessage("Let's read the storybook together...");
+      await speakText(`Let's read the storybook together, ${childName}!`);
+      setIsLoadingMode(false);
+      setAppMode(mode);
       setPhase("intro");
-      await speakText(`Let's read the story together, ${childName}! I'll read each page to you.`);
     } else if (mode === "learn_to_read" && currentPage) {
-      setPhase("reading");
+      setIsLoadingMode(true);
+      setLoadingMessage("Let's learn how to read...");
       await speakText(`Let's learn to read, ${childName}! Here's the first sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
+      setIsLoadingMode(false);
+      setAppMode(mode);
+      setPhase("reading");
     } else if (mode === "writing_practice" && currentPage) {
-      setPhase("writing");
+      setIsLoadingMode(true);
+      setLoadingMessage("Let's learn how to write...");
       await speakText(`Let's practice writing, ${childName}! Try to write this sentence.`);
+      setIsLoadingMode(false);
+      setAppMode(mode);
+      setPhase("writing");
     }
   };
 
@@ -634,10 +663,27 @@ export default function Home() {
   }
 
   // Main menu screen
-  if (appMode === "menu") {
+  if (appMode === "menu" && !isLoadingMode) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <MainMenuScreen childName={childName} onSelectMode={handleSelectMode} />
+      </main>
+    );
+  }
+
+  // Loading/intro screen while speech plays
+  if (isLoadingMode) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <div className="card max-w-lg w-full text-center">
+          <div className="text-6xl mb-6">📖</div>
+          <h1 className="text-3xl font-bold text-primary mb-6">
+            {loadingMessage}
+          </h1>
+          <div className="flex justify-center">
+            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        </div>
       </main>
     );
   }
