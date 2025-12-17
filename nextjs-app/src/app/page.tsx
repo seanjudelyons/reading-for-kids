@@ -339,18 +339,14 @@ export default function Home() {
   const [storybook, setStorybook] = useState<Storybook | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [phase, setPhase] = useState<LearningPhase>("intro");
-  const [apiKey, setApiKey] = useState("");
-  const [isApiKeySet, setIsApiKeySet] = useState(false);
   const [showStoryComplete, setShowStoryComplete] = useState(false);
   const [childName, setChildName] = useState("");
   const [isNameSet, setIsNameSet] = useState(false);
   const [showChoice, setShowChoice] = useState(false);
   const [isBookSelected, setIsBookSelected] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>("menu");
-  const [isLoadingMode, setIsLoadingMode] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState("");
 
-  // Load storybook and check for server-side API key on mount
+  // Load storybook on mount
   useEffect(() => {
     async function loadStorybook() {
       try {
@@ -359,7 +355,6 @@ export default function Home() {
           const data = await response.json();
           setStorybook(data);
         } else {
-          // Use default storybook
           setStorybook(defaultStorybook);
         }
       } catch {
@@ -367,52 +362,85 @@ export default function Home() {
       }
     }
 
-    async function checkApiKey() {
-      try {
-        const response = await fetch("/api/check-api-key");
-        if (response.ok) {
-          const { hasApiKey } = await response.json();
-          if (hasApiKey) {
-            setApiKey("server");
-            setIsApiKeySet(true);
-          }
-        }
-      } catch {
-        // Ignore - user will need to enter key manually
-      }
-    }
-
     loadStorybook();
-    checkApiKey();
+
+    // Preload the name input phrase immediately
+    preloadAudioBatch([
+      "Hello! What's your name? Type it in the box.",
+    ]);
   }, []);
 
   // Current page data
   const currentPage = storybook?.pages[currentPageIndex];
   const totalPages = storybook?.pages.length || 0;
 
-  // Preload common audio phrases when API key is set
+  // Preload all story content as soon as book is selected (doesn't need name)
   useEffect(() => {
-    if (isApiKeySet && storybook) {
-      // Preload static phrases that we know will be used
-      const commonPhrases = [
-        "Hello! What's your name? Type it in the box.",
-      ];
-
-      // Preload all story sentences
+    if (isBookSelected && storybook) {
+      // All story sentences
       const storySentences = storybook.pages.map((page) => page.sentence);
 
-      preloadAudioBatch([...commonPhrases, ...storySentences]);
-    }
-  }, [isApiKeySet, storybook]);
+      // All individual words from all pages
+      const allWords = storybook.pages.flatMap((page) => page.words);
+      const uniqueWords = [...new Set(allWords)];
 
-  // Handle API key submission
-  const handleApiKeySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (apiKey.trim()) {
-      setIsApiKeySet(true);
-      speakText("Welcome! Let's learn to read and write!");
+      // Word learning phrases - for each word
+      const wordPhrases = uniqueWords.flatMap((word) => [
+        word,
+        `The word is ${word}.`,
+        `Can you say ${word}?`,
+      ]);
+
+      preloadAudioBatch([
+        ...storySentences,
+        ...wordPhrases,
+      ]);
     }
-  };
+  }, [isBookSelected, storybook]);
+
+  // Preload personalized phrases once we have the child's name
+  useEffect(() => {
+    if (isNameSet && storybook && childName) {
+      // Intro phrases for each mode
+      const introPhrasesWithName = [
+        `Let's read the storybook together, ${childName}!`,
+        `Let's learn to read, ${childName}!`,
+        `Let's practice writing, ${childName}!`,
+      ];
+
+      // Get first sentence for the learn to read intro
+      const firstSentence = storybook.pages[0]?.sentence;
+      if (firstSentence) {
+        introPhrasesWithName.push(
+          `Let's learn to read, ${childName}! Here's the first sentence: ${firstSentence}. Now you read it out loud! Press Done when you're finished.`
+        );
+      }
+
+      // Encouragement and transition phrases
+      const encouragementPhrases = [
+        `Great job ${childName}!`,
+        `Well done ${childName}!`,
+        `Amazing ${childName}!`,
+        `Great work ${childName}!`,
+        `Excellent ${childName}!`,
+        `Great job ${childName}! Now try writing this sentence.`,
+        `Amazing ${childName}! You wrote the whole story!`,
+        `Congratulations ${childName}! You finished the whole story!`,
+        `Great work ${childName}! What would you like to do next? Click a button to choose.`,
+      ];
+
+      // Transition phrases for each page
+      const pageTransitions = storybook.pages.map((page) =>
+        `Great job ${childName}! Here's the next sentence: ${page.sentence}. Now you read it!`
+      );
+
+      preloadAudioBatch([
+        ...introPhrasesWithName,
+        ...encouragementPhrases,
+        ...pageTransitions,
+      ]);
+    }
+  }, [isNameSet, storybook, childName]);
 
   // Verify reading with Gemini
   const verifyReading = useCallback(
@@ -428,7 +456,6 @@ export default function Home() {
           body: JSON.stringify({
             expectedSentence: currentPage.sentence,
             spokenText,
-            apiKey,
           }),
         });
 
@@ -450,7 +477,7 @@ export default function Home() {
         encouragement: isCorrect ? "Great job! You're amazing!" : "Let's try again!",
       };
     },
-    [currentPage, apiKey]
+    [currentPage]
   );
 
   // Handle book selection
@@ -468,31 +495,22 @@ export default function Home() {
   };
 
   // Handle mode selection from main menu
-  const handleSelectMode = async (mode: AppMode) => {
+  const handleSelectMode = (mode: AppMode) => {
     setCurrentPageIndex(0);
+    setAppMode(mode);
 
     if (mode === "read_together") {
-      // Show loading screen with intro message
-      setIsLoadingMode(true);
-      setLoadingMessage("Let's read the storybook together...");
-      await speakText(`Let's read the storybook together, ${childName}!`);
-      setIsLoadingMode(false);
-      setAppMode(mode);
       setPhase("intro");
+      // Play intro audio in background (don't await - it's preloaded)
+      speakText(`Let's read the storybook together, ${childName}!`);
     } else if (mode === "learn_to_read" && currentPage) {
-      setIsLoadingMode(true);
-      setLoadingMessage("Let's learn how to read...");
-      await speakText(`Let's learn to read, ${childName}! Here's the first sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
-      setIsLoadingMode(false);
-      setAppMode(mode);
       setPhase("reading");
+      // Play intro audio in background (don't await - it's preloaded)
+      speakText(`Let's learn to read, ${childName}! Here's the first sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
     } else if (mode === "writing_practice" && currentPage) {
-      setIsLoadingMode(true);
-      setLoadingMessage("Let's learn how to write...");
-      await speakText(`Let's practice writing, ${childName}! Try to write this sentence.`);
-      setIsLoadingMode(false);
-      setAppMode(mode);
       setPhase("writing");
+      // Play intro audio in background (don't await - it's preloaded)
+      speakText(`Let's practice writing, ${childName}! Try to write this sentence.`);
     }
   };
 
@@ -600,51 +618,7 @@ export default function Home() {
     );
   }
 
-  // API Key input (first time)
-  if (!isApiKeySet) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        <div className="card max-w-lg w-full text-center">
-          <h1 className="text-4xl font-bold text-primary mb-4">
-            {storybook.title}
-          </h1>
-          <p className="text-xl text-gray-700 mb-6">{storybook.description}</p>
-
-          <div className="bg-accent/30 rounded-xl p-4 mb-6">
-            <p className="text-lg text-gray-700">
-              To use AI-powered reading verification, please enter your Gemini
-              API key. Your key stays in your browser.
-            </p>
-          </div>
-
-          <form onSubmit={handleApiKeySubmit} className="space-y-4">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter Gemini API Key"
-              className="w-full px-4 py-3 rounded-xl border-2 border-gray-300 focus:border-primary focus:outline-none text-lg"
-            />
-            <button type="submit" className="btn-primary w-full">
-              Start Learning!
-            </button>
-          </form>
-
-          <button
-            onClick={() => {
-              setApiKey("demo");
-              setIsApiKeySet(true);
-            }}
-            className="mt-4 text-gray-500 underline"
-          >
-            Skip (use basic mode)
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  // Book selection screen (first screen after API key)
+  // Book selection screen (first screen)
   if (!isBookSelected) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
@@ -663,27 +637,10 @@ export default function Home() {
   }
 
   // Main menu screen
-  if (appMode === "menu" && !isLoadingMode) {
+  if (appMode === "menu") {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <MainMenuScreen childName={childName} onSelectMode={handleSelectMode} />
-      </main>
-    );
-  }
-
-  // Loading/intro screen while speech plays
-  if (isLoadingMode) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        <div className="card max-w-lg w-full text-center">
-          <div className="text-6xl mb-6">📖</div>
-          <h1 className="text-3xl font-bold text-primary mb-6">
-            {loadingMessage}
-          </h1>
-          <div className="flex justify-center">
-            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        </div>
       </main>
     );
   }

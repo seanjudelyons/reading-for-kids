@@ -232,35 +232,63 @@ let currentAudio: HTMLAudioElement | null = null;
 // Audio cache for preloaded phrases
 const audioCache = new Map<string, string>();
 
-// Preload audio for a phrase (stores base64 WAV in cache)
-export async function preloadAudio(text: string): Promise<void> {
-  if (audioCache.has(text)) {
-    return; // Already cached
-  }
+// Queue for throttled preloading
+const preloadQueue: string[] = [];
+let isProcessingQueue = false;
+const DELAY_BETWEEN_REQUESTS_MS = 4500; // ~13 requests per minute to stay under limits
 
-  try {
-    const response = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
+// Process the preload queue with delays between requests
+async function processPreloadQueue(): Promise<void> {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.audio) {
-        // Convert PCM to WAV and cache it
-        const wavBase64 = pcmToWav(data.audio);
-        audioCache.set(text, wavBase64);
+  while (preloadQueue.length > 0) {
+    const text = preloadQueue.shift();
+    if (!text || audioCache.has(text)) continue;
+
+    try {
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.audio) {
+          const wavBase64 = pcmToWav(data.audio);
+          audioCache.set(text, wavBase64);
+        }
       }
+    } catch (error) {
+      console.error("Preload error:", error);
     }
-  } catch (error) {
-    console.error("Preload error:", error);
+
+    // Wait before next request to avoid rate limits
+    if (preloadQueue.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, DELAY_BETWEEN_REQUESTS_MS));
+    }
   }
+
+  isProcessingQueue = false;
 }
 
-// Preload multiple phrases in parallel
-export async function preloadAudioBatch(phrases: string[]): Promise<void> {
-  await Promise.all(phrases.map((phrase) => preloadAudio(phrase)));
+// Add phrases to preload queue (throttled)
+export function preloadAudioBatch(phrases: string[]): void {
+  // Filter out already cached or queued phrases
+  const newPhrases = phrases.filter(
+    (phrase) => !audioCache.has(phrase) && !preloadQueue.includes(phrase)
+  );
+
+  preloadQueue.push(...newPhrases);
+  processPreloadQueue(); // Start processing if not already running
+}
+
+// Preload a single phrase with high priority (adds to front of queue)
+export function preloadAudioPriority(text: string): void {
+  if (audioCache.has(text) || preloadQueue.includes(text)) return;
+  preloadQueue.unshift(text); // Add to front
+  processPreloadQueue();
 }
 
 // Check if audio is cached
