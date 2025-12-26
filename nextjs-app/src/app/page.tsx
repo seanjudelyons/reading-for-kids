@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ReadingPhase } from "@/components/ReadingPhase";
 import { WordLearning } from "@/components/WordLearning";
 import { WritingPhase } from "@/components/WritingPhase";
-import { speakText, preloadAudioBatch } from "@/lib/gemini";
+import { speakText, preloadAudioBatch, preloadAudioBatchPriority, stopSpeech } from "@/lib/gemini";
 import type { Storybook, LearningPhase } from "@/types";
 
 // Book selection screen - first screen user sees
@@ -346,6 +346,11 @@ export default function Home() {
   const [isBookSelected, setIsBookSelected] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>("menu");
 
+  // Stop any playing audio when phase or page changes
+  useEffect(() => {
+    stopSpeech();
+  }, [phase, currentPageIndex, appMode]);
+
   // Load storybook on mount
   useEffect(() => {
     async function loadStorybook() {
@@ -364,9 +369,22 @@ export default function Home() {
 
     loadStorybook();
 
-    // Preload the name input phrase immediately
-    preloadAudioBatch([
+    // Preload ALL static phrases immediately for instant playback
+    preloadAudioBatchPriority([
+      // First thing user hears - highest priority
       "Hello! What's your name? Type it in the box.",
+      // Common feedback phrases
+      "Let's try again!",
+      "I didn't hear anything. Try again!",
+      "Good try! Let's keep going!",
+      "Let's keep going!",
+      "No problem! Let's keep going.",
+      // Writing phase
+      "Now let's write! Fill in the missing word.",
+      "Correct!",
+      "Amazing! You wrote the whole sentence!",
+      "Not quite. Try again!",
+      "Good effort! You finished the sentence!",
     ]);
   }, []);
 
@@ -398,25 +416,10 @@ export default function Home() {
     }
   }, [isBookSelected, storybook]);
 
-  // Preload personalized phrases once we have the child's name
+  // Preload additional personalized phrases (lower priority, after intro phrases)
   useEffect(() => {
     if (isNameSet && storybook && childName) {
-      // Intro phrases for each mode
-      const introPhrasesWithName = [
-        `Let's read the storybook together, ${childName}!`,
-        `Let's learn to read, ${childName}!`,
-        `Let's practice writing, ${childName}!`,
-      ];
-
-      // Get first sentence for the learn to read intro
-      const firstSentence = storybook.pages[0]?.sentence;
-      if (firstSentence) {
-        introPhrasesWithName.push(
-          `Let's learn to read, ${childName}! Here's the first sentence: ${firstSentence}. Now you read it out loud! Press Done when you're finished.`
-        );
-      }
-
-      // Encouragement and transition phrases
+      // Encouragement and transition phrases (intro phrases already preloaded with priority)
       const encouragementPhrases = [
         `Great job ${childName}!`,
         `Well done ${childName}!`,
@@ -435,7 +438,6 @@ export default function Home() {
       );
 
       preloadAudioBatch([
-        ...introPhrasesWithName,
         ...encouragementPhrases,
         ...pageTransitions,
       ]);
@@ -486,11 +488,19 @@ export default function Home() {
   };
 
   // Handle name submission - go to main menu
-  const handleNameSubmit = async (e: React.FormEvent) => {
+  const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (childName.trim()) {
+    if (childName.trim() && storybook) {
+      // Immediately preload the three intro phrases with HIGH PRIORITY
+      // These are what the user will hear first when selecting any mode
+      const firstSentence = storybook.pages[0]?.sentence || "";
+      preloadAudioBatchPriority([
+        `Let's read the storybook together, ${childName}!`,
+        `Let's learn to read, ${childName}! Here's the first sentence: ${firstSentence}. Now you read it out loud! Press Done when you're finished.`,
+        `Let's practice writing, ${childName}! Try to write this sentence.`,
+      ]);
+
       setIsNameSet(true);
-      // Menu audio will play from MainMenuScreen component
     }
   };
 
@@ -609,9 +619,9 @@ export default function Home() {
   // Loading state
   if (!storybook) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+      <main className="min-h-screen flex items-center justify-center" suppressHydrationWarning>
+        <div className="text-center" suppressHydrationWarning>
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" suppressHydrationWarning />
           <p className="text-2xl font-bold text-gray-700">Loading story...</p>
         </div>
       </main>

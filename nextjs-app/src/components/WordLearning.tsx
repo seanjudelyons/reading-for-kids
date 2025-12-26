@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { speakText } from "@/lib/gemini";
+import { speakText, stopSpeech } from "@/lib/gemini";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 
 interface WordLearningProps {
@@ -62,6 +62,11 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
     }
   }, [phase, playAllWords]);
 
+  // Cleanup: stop speech when component unmounts
+  useEffect(() => {
+    return () => stopSpeech();
+  }, []);
+
   // Check how close two words are (simple similarity check)
   const getCloseness = (spoken: string, expected: string): "exact" | "close" | "wrong" => {
     const s = spoken.toLowerCase().replace(/[^a-z]/g, "");
@@ -72,6 +77,15 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
 
     // One contains the other
     if (s.includes(e) || e.includes(s)) return "exact";
+
+    // For very short words (1-2 letters), be extra lenient
+    // Words like "a", "I", "an", "is", "it" are hard for speech recognition
+    if (e.length <= 2) {
+      // If spoken word starts with same letter, count as correct
+      if (s.length > 0 && s[0] === e[0]) return "exact";
+      // Common misrecognitions for "a" - "uh", "ah", "ay", "eh"
+      if (e === "a" && (s === "uh" || s === "ah" || s === "ay" || s === "eh" || s === "hey" || s === "the")) return "exact";
+    }
 
     // Check if they share the same starting sound (first 2+ chars)
     if (s.length >= 2 && e.length >= 2 && s.slice(0, 2) === e.slice(0, 2)) return "close";
@@ -85,6 +99,25 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
     if (matches / longer >= 0.6) return "close";
 
     return "wrong";
+  };
+
+  // Skip the current word
+  const handleSkipWord = async () => {
+    stopListening();
+    await speakText(`The word is ${currentWord}. Let's move on!`);
+
+    setTimeout(() => {
+      if (currentWordIndex < words.length - 1) {
+        setCurrentWordIndex(prev => prev + 1);
+        setQuizFeedback(null);
+        setIsCorrect(null);
+        resetTranscript();
+        startListening();
+      } else {
+        speakText(`Good job ${childName}! You finished all the words!`);
+        setTimeout(onComplete, 1500);
+      }
+    }, 1000);
   };
 
   // Handle quiz answer
@@ -135,19 +168,10 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
         }
       }, 800);
     } else {
-      // Give encouraging feedback based on how close they were
-      const feedbackMessage = isClose
-        ? `So close! You said "${spoken}". The word is "${currentWord}".`
-        : `You said "${spoken}". This word is "${currentWord}".`;
+      // Simple feedback - pre-computed and ready to go
+      setQuizFeedback("Let's try again!");
 
-      setQuizFeedback(feedbackMessage);
-
-      // Encourage them to try again
-      const spokenFeedback = isClose
-        ? `So close ${childName}! The word is ${currentWord}. Try again!`
-        : `You said ${spoken}. This word is ${currentWord}. Let's try again!`;
-
-      await speakText(spokenFeedback);
+      await speakText("Let's try again!");
 
       // Let them try the same word again
       setTimeout(() => {
@@ -266,9 +290,14 @@ export function WordLearning({ words, sentence, childName, onComplete }: WordLea
           </div>
         )}
         {!quizFeedback && (
-          <button onClick={handleCheckAnswer} className="btn-primary">
-            Done
-          </button>
+          <div className="flex gap-4">
+            <button onClick={handleSkipWord} className="btn-secondary">
+              Skip
+            </button>
+            <button onClick={handleCheckAnswer} className="btn-primary">
+              Done
+            </button>
+          </div>
         )}
       </div>
     </div>

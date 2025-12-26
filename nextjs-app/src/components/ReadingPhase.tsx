@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
-import { speakText } from "@/lib/gemini";
+import { speakText, stopSpeech } from "@/lib/gemini";
 
 interface ReadingPhaseProps {
   sentence: string;
@@ -43,6 +43,11 @@ export function ReadingPhase({
     }
   }, [resetTranscript, startListening]);
 
+  // Cleanup: stop speech when component unmounts
+  useEffect(() => {
+    return () => stopSpeech();
+  }, []);
+
   const handleStopReading = async () => {
     const result = stopListening();
     const spokenText = result?.transcript || "";
@@ -81,6 +86,15 @@ export function ReadingPhase({
     setFeedback(null);
     setIsCorrect(null);
     startListening();
+  };
+
+  const handleSkip = async () => {
+    stopListening();
+    setFeedback("No problem! Let's move on.");
+    await speakText("No problem! Let's keep going.");
+    setTimeout(() => {
+      onComplete("");
+    }, 1000);
   };
 
   return (
@@ -139,17 +153,31 @@ export function ReadingPhase({
           {/* Action Buttons */}
           <div className="flex gap-4">
             {isListening ? (
-              <button
-                onClick={handleStopReading}
-                className="btn-secondary"
-                disabled={isVerifying}
-              >
-                Done
-              </button>
+              <>
+                <button
+                  onClick={handleSkip}
+                  className="btn-secondary"
+                  disabled={isVerifying}
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={handleStopReading}
+                  className="btn-primary"
+                  disabled={isVerifying}
+                >
+                  Done
+                </button>
+              </>
             ) : isCorrect === false ? (
-              <button onClick={handleTryAgain} className="btn-primary btn-glow">
-                Try Again
-              </button>
+              <>
+                <button onClick={handleSkip} className="btn-secondary">
+                  Skip
+                </button>
+                <button onClick={handleTryAgain} className="btn-primary btn-glow">
+                  Try Again
+                </button>
+              </>
             ) : null}
           </div>
 

@@ -1,0 +1,13 @@
+{
+  "Hello! What's your name? Type it in the box.": "/audio/hello.wav",
+  "Let's try again!": "/audio/try-again.wav",
+  "I didn't hear anything. Try again!": "/audio/didnt-hear.wav",
+  "Good try! Let's keep going!": "/audio/good-try.wav",
+  "Let's keep going!": "/audio/keep-going.wav",
+  "No problem! Let's keep going.": "/audio/no-problem.wav",
+  "Now let's write! Fill in the missing word.": "/audio/write-intro.wav",
+  "Correct!": "/audio/correct.wav",
+  "Amazing! You wrote the whole sentence!": "/audio/wrote-sentence.wav",
+  "Not quite. Try again!": "/audio/not-quite.wav",
+  "Good effort! You finished the sentence!": "/audio/good-effort.wav"
+}

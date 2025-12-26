@@ -229,8 +229,38 @@ export function playBase64Audio(base64Data: string): Promise<void> {
 // Track current audio element to allow cancellation
 let currentAudio: HTMLAudioElement | null = null;
 
-// Audio cache for preloaded phrases
+// Audio cache for preloaded phrases (stores base64 WAV data)
 const audioCache = new Map<string, string>();
+
+// Static audio file mapping (phrase -> URL) loaded from manifest
+const staticAudioUrls = new Map<string, string>();
+
+// Load static audio manifest on startup (maps phrases to pre-generated WAV files)
+let staticCacheLoaded = false;
+async function loadStaticAudioCache(): Promise<void> {
+  if (staticCacheLoaded || typeof window === "undefined") return;
+  staticCacheLoaded = true;
+
+  try {
+    const response = await fetch("/audio/manifest.json");
+    if (response.ok) {
+      const manifest = await response.json();
+      for (const [phrase, url] of Object.entries(manifest)) {
+        if (typeof url === "string") {
+          staticAudioUrls.set(phrase, url);
+        }
+      }
+      console.log(`Loaded ${staticAudioUrls.size} static audio phrases`);
+    }
+  } catch {
+    // Manifest doesn't exist yet - that's okay
+  }
+}
+
+// Auto-load static cache when module loads
+if (typeof window !== "undefined") {
+  loadStaticAudioCache();
+}
 
 // Queue for throttled preloading
 const preloadQueue: string[] = [];
@@ -291,6 +321,20 @@ export function preloadAudioPriority(text: string): void {
   processPreloadQueue();
 }
 
+// Preload multiple phrases with high priority (adds to front of queue, in order)
+export function preloadAudioBatchPriority(phrases: string[]): void {
+  // Filter and add in reverse order so first phrase ends up at front
+  const newPhrases = phrases.filter(
+    (phrase) => !audioCache.has(phrase) && !preloadQueue.includes(phrase)
+  );
+
+  // Add in reverse so they end up in correct order at front
+  for (let i = newPhrases.length - 1; i >= 0; i--) {
+    preloadQueue.unshift(newPhrases[i]);
+  }
+  processPreloadQueue();
+}
+
 // Check if audio is cached
 export function isAudioCached(text: string): boolean {
   return audioCache.has(text);
@@ -305,18 +349,47 @@ export function stopSpeech(): void {
   }
 }
 
-// Main speak function - uses cache first, then Gemini TTS
+// Play static audio file directly (fastest - no processing needed)
+function playStaticAudio(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.onended = () => {
+      currentAudio = null;
+      resolve();
+    };
+    audio.onerror = (e) => {
+      currentAudio = null;
+      reject(e);
+    };
+    audio.play().catch((e) => {
+      currentAudio = null;
+      reject(e);
+    });
+  });
+}
+
+// Main speak function - uses static files first, then cache, then API
 export async function speakText(text: string): Promise<void> {
   // Stop any currently playing speech first
   stopSpeech();
 
-  // Check cache first for instant playback
+  // Check static audio files first (instant - pre-generated WAV files)
+  if (staticAudioUrls.has(text)) {
+    try {
+      await playStaticAudio(staticAudioUrls.get(text)!);
+      return;
+    } catch (error) {
+      console.error("Static audio playback failed:", error);
+    }
+  }
+
+  // Check runtime cache second
   if (audioCache.has(text)) {
     try {
       await playWavAudioWithTracking(audioCache.get(text)!);
       return;
     } catch (error) {
-      // If cached playback fails, continue to fetch
       console.error("Cached audio playback failed:", error);
     }
   }

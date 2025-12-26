@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { speakText } from "@/lib/gemini";
+import { speakText, stopSpeech } from "@/lib/gemini";
 
 interface WritingPhaseProps {
   sentence: string;
@@ -33,6 +33,11 @@ export function WritingPhase({ sentence, words, onComplete }: WritingPhaseProps)
   useEffect(() => {
     inputRef.current?.focus();
   }, [currentWordIndex]);
+
+  // Cleanup: stop speech when component unmounts
+  useEffect(() => {
+    return () => stopSpeech();
+  }, []);
 
   // Build sentence with blank for current word
   const renderSentenceWithBlank = () => {
@@ -99,6 +104,24 @@ export function WritingPhase({ sentence, words, onComplete }: WritingPhaseProps)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && userInput.trim()) {
       checkAnswer();
+    }
+  };
+
+  const handleSkipWord = async () => {
+    await speakText(`The word is ${currentWord}. Let's move on!`);
+
+    if (currentWordIndex < words.length - 1) {
+      setTimeout(() => {
+        setCurrentWordIndex((prev) => prev + 1);
+        setUserInput("");
+        setFeedback(null);
+        setIsCorrect(null);
+      }, 1000);
+    } else {
+      // Last word - complete the phase
+      setIsComplete(true);
+      await speakText("Good effort! You finished the sentence!");
+      setTimeout(onComplete, 2000);
     }
   };
 
@@ -202,6 +225,12 @@ export function WritingPhase({ sentence, words, onComplete }: WritingPhaseProps)
             disabled={showSneakPeek}
           >
             👀 Sneak Peek
+          </button>
+          <button
+            onClick={handleSkipWord}
+            className="btn-secondary"
+          >
+            Skip
           </button>
           <button
             onClick={checkAnswer}
