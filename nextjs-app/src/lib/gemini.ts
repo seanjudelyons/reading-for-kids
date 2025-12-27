@@ -337,7 +337,42 @@ export function preloadAudioBatchPriority(phrases: string[]): void {
 
 // Check if audio is cached
 export function isAudioCached(text: string): boolean {
-  return audioCache.has(text);
+  return audioCache.has(text) || staticAudioUrls.has(text);
+}
+
+// Preload the FIRST phrase immediately (no queue), rest go to queue
+// Use this when one phrase is critical and must be ready ASAP
+export function preloadFirstImmediately(phrases: string[]): void {
+  const newPhrases = phrases.filter(
+    (phrase) => !audioCache.has(phrase) && !staticAudioUrls.has(phrase)
+  );
+
+  if (newPhrases.length === 0) return;
+
+  // First phrase: fetch immediately (bypass queue)
+  const firstPhrase = newPhrases[0];
+  fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: firstPhrase }),
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.audio) {
+        const wavBase64 = pcmToWav(data.audio);
+        audioCache.set(firstPhrase, wavBase64);
+      }
+    })
+    .catch((error) => console.error("Immediate preload error:", error));
+
+  // Rest go to priority queue (will be processed with rate limiting)
+  const rest = newPhrases.slice(1);
+  for (let i = rest.length - 1; i >= 0; i--) {
+    if (!preloadQueue.includes(rest[i])) {
+      preloadQueue.unshift(rest[i]);
+    }
+  }
+  processPreloadQueue();
 }
 
 // Stop any currently playing speech
@@ -380,6 +415,8 @@ export async function speakText(text: string): Promise<void> {
       await playStaticAudio(staticAudioUrls.get(text)!);
       return;
     } catch (error) {
+      // AbortError is expected when navigating away - silently ignore
+      if (error instanceof Error && error.name === "AbortError") return;
       console.error("Static audio playback failed:", error);
     }
   }
@@ -390,6 +427,8 @@ export async function speakText(text: string): Promise<void> {
       await playWavAudioWithTracking(audioCache.get(text)!);
       return;
     } catch (error) {
+      // AbortError is expected when navigating away - silently ignore
+      if (error instanceof Error && error.name === "AbortError") return;
       console.error("Cached audio playback failed:", error);
     }
   }
@@ -412,9 +451,13 @@ export async function speakText(text: string): Promise<void> {
       }
     }
   } catch (error) {
-    // Silently handle autoplay errors (NotAllowedError) - these are expected before user interaction
-    if (error instanceof Error && error.name === "NotAllowedError") {
-      return;
+    // Silently handle expected errors
+    if (error instanceof Error) {
+      // NotAllowedError: autoplay blocked before user interaction
+      // AbortError: audio stopped due to navigation
+      if (error.name === "NotAllowedError" || error.name === "AbortError") {
+        return;
+      }
     }
     // Only log unexpected errors
     console.error("TTS error:", error);

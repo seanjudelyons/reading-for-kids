@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ReadingPhase } from "@/components/ReadingPhase";
 import { WordLearning } from "@/components/WordLearning";
 import { WritingPhase } from "@/components/WritingPhase";
-import { speakText, preloadAudioBatch, preloadAudioBatchPriority, stopSpeech } from "@/lib/gemini";
+import { speakText, preloadFirstImmediately, preloadAudioBatch, stopSpeech } from "@/lib/gemini";
 import type { Storybook, LearningPhase } from "@/types";
 
 // Book selection screen - first screen user sees
@@ -70,12 +70,15 @@ function NameInputScreen({
   onSubmit,
   childName,
   setChildName,
+  storybook,
 }: {
   onSubmit: (e: React.FormEvent) => void;
   childName: string;
   setChildName: (name: string) => void;
+  storybook: Storybook | null;
 }) {
   const hasPlayedRef = useRef(false);
+  const preloadedNameRef = useRef<string>("");
   const showButtonGlow = childName.trim().length > 0;
 
   useEffect(() => {
@@ -84,6 +87,28 @@ function NameInputScreen({
       speakText("Hello! What's your name? Type it in the box.");
     }
   }, []);
+
+  // Start preloading personalized phrases as user types (debounced)
+  useEffect(() => {
+    const name = childName.trim();
+    if (!name || !storybook || name === preloadedNameRef.current) return;
+
+    // Debounce: wait 500ms after user stops typing
+    const timer = setTimeout(() => {
+      preloadedNameRef.current = name;
+      const firstSentence = storybook.pages[0]?.sentence || "";
+
+      // Preload the FIRST phrase immediately, rest go to queue
+      preloadFirstImmediately([
+        // Most likely first phrase - preload immediately
+        `Let's learn to read, ${name}! Here's the first sentence: ${firstSentence}. Now you read it out loud! Press Done when you're finished.`,
+        `Let's read the storybook together, ${name}!`,
+        `Let's practice writing, ${name}! Try to write this sentence.`,
+      ]);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [childName, storybook]);
 
   return (
     <div className="card max-w-lg w-full text-center">
@@ -368,31 +393,14 @@ export default function Home() {
     }
 
     loadStorybook();
-
-    // Preload ALL static phrases immediately for instant playback
-    preloadAudioBatchPriority([
-      // First thing user hears - highest priority
-      "Hello! What's your name? Type it in the box.",
-      // Common feedback phrases
-      "Let's try again!",
-      "I didn't hear anything. Try again!",
-      "Good try! Let's keep going!",
-      "Let's keep going!",
-      "No problem! Let's keep going.",
-      // Writing phase
-      "Now let's write! Fill in the missing word.",
-      "Correct!",
-      "Amazing! You wrote the whole sentence!",
-      "Not quite. Try again!",
-      "Good effort! You finished the sentence!",
-    ]);
+    // Static phrases are loaded from public/audio/ via manifest.json automatically
   }, []);
 
   // Current page data
   const currentPage = storybook?.pages[currentPageIndex];
   const totalPages = storybook?.pages.length || 0;
 
-  // Preload all story content as soon as book is selected (doesn't need name)
+  // Preload all story content IN PARALLEL as soon as book is selected
   useEffect(() => {
     if (isBookSelected && storybook) {
       // All story sentences
@@ -405,10 +413,10 @@ export default function Home() {
       // Word learning phrases - for each word
       const wordPhrases = uniqueWords.flatMap((word) => [
         word,
-        `The word is ${word}.`,
-        `Can you say ${word}?`,
+        `The word is ${word}. Let's move on!`,
       ]);
 
+      // Queue for rate-limited preloading
       preloadAudioBatch([
         ...storySentences,
         ...wordPhrases,
@@ -416,32 +424,10 @@ export default function Home() {
     }
   }, [isBookSelected, storybook]);
 
-  // Preload additional personalized phrases (lower priority, after intro phrases)
+  // Note: personalized phrases (with childName) are preloaded in handleNameSubmit
   useEffect(() => {
-    if (isNameSet && storybook && childName) {
-      // Encouragement and transition phrases (intro phrases already preloaded with priority)
-      const encouragementPhrases = [
-        `Great job ${childName}!`,
-        `Well done ${childName}!`,
-        `Amazing ${childName}!`,
-        `Great work ${childName}!`,
-        `Excellent ${childName}!`,
-        `Great job ${childName}! Now try writing this sentence.`,
-        `Amazing ${childName}! You wrote the whole story!`,
-        `Congratulations ${childName}! You finished the whole story!`,
-        `Great work ${childName}! What would you like to do next? Click a button to choose.`,
-      ];
-
-      // Transition phrases for each page
-      const pageTransitions = storybook.pages.map((page) =>
-        `Great job ${childName}! Here's the next sentence: ${page.sentence}. Now you read it!`
-      );
-
-      preloadAudioBatch([
-        ...encouragementPhrases,
-        ...pageTransitions,
-      ]);
-    }
+    // This hook is intentionally empty - personalized preloading moved to handleNameSubmit
+    // for immediate parallel loading when name is entered
   }, [isNameSet, storybook, childName]);
 
   // Verify reading with Gemini
@@ -491,13 +477,30 @@ export default function Home() {
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (childName.trim() && storybook) {
-      // Immediately preload the three intro phrases with HIGH PRIORITY
-      // These are what the user will hear first when selecting any mode
-      const firstSentence = storybook.pages[0]?.sentence || "";
-      preloadAudioBatchPriority([
-        `Let's read the storybook together, ${childName}!`,
-        `Let's learn to read, ${childName}! Here's the first sentence: ${firstSentence}. Now you read it out loud! Press Done when you're finished.`,
-        `Let's practice writing, ${childName}! Try to write this sentence.`,
+      const name = childName.trim();
+      const sentences = storybook.pages.map(p => p.sentence);
+
+      // Queue additional personalized phrases (rate-limited)
+      // Note: The 3 intro phrases are already preloading from NameInputScreen while typing
+      preloadAudioBatch([
+        // Transition phrases (likely needed soon after intro)
+        `Great work ${name}! What would you like to do next? Click a button to choose.`,
+        `Now let's see if you know the words, ${name}! What word is this?`,
+        `Okay ${name}, let's write the sentence!`,
+
+        // Success phrases
+        `That's right ${name}!`,
+        `That's right ${name}! Next word!`,
+        `Good job ${name}! You finished all the words!`,
+        `Excellent ${name}! You know all the words!`,
+
+        // Completion phrases
+        `Great job ${name}! Now try writing this sentence.`,
+        `Amazing ${name}! You wrote the whole story!`,
+        `Congratulations ${name}! You finished the whole story!`,
+
+        // Next sentence phrases (for each page)
+        ...sentences.slice(1).map(s => `Great job ${name}! Here's the next sentence: ${s}. Now you read it!`),
       ]);
 
       setIsNameSet(true);
@@ -511,15 +514,14 @@ export default function Home() {
 
     if (mode === "read_together") {
       setPhase("intro");
-      // Play intro audio in background (don't await - it's preloaded)
-      speakText(`Let's read the storybook together, ${childName}!`);
+      // ReadTogetherPage will auto-play the sentence, no intro needed here
     } else if (mode === "learn_to_read" && currentPage) {
       setPhase("reading");
-      // Play intro audio in background (don't await - it's preloaded)
+      // Play instruction - child needs to know what to do
       speakText(`Let's learn to read, ${childName}! Here's the first sentence: ${currentPage.sentence}. Now you read it out loud! Press Done when you're finished.`);
     } else if (mode === "writing_practice" && currentPage) {
       setPhase("writing");
-      // Play intro audio in background (don't await - it's preloaded)
+      // Play instruction - child needs to know what to do
       speakText(`Let's practice writing, ${childName}! Try to write this sentence.`);
     }
   };
@@ -641,7 +643,7 @@ export default function Home() {
   if (!isNameSet) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        <NameInputScreen onSubmit={handleNameSubmit} childName={childName} setChildName={setChildName} />
+        <NameInputScreen onSubmit={handleNameSubmit} childName={childName} setChildName={setChildName} storybook={storybook} />
       </main>
     );
   }
@@ -672,6 +674,13 @@ export default function Home() {
     );
   }
 
+  // Handle going back to previous page in writing_practice mode
+  const handleWritingPreviousPage = () => {
+    if (currentPageIndex > 0) {
+      setCurrentPageIndex((prev) => prev - 1);
+    }
+  };
+
   // Writing Practice mode
   if (appMode === "writing_practice" && currentPage) {
     return (
@@ -680,13 +689,24 @@ export default function Home() {
           {/* Header */}
           <header className="mb-6">
             <div className="flex items-center justify-between mb-4">
-              <button
-                onClick={handleBackToMenu}
-                className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
-              >
-                <span className="text-2xl">←</span>
-                <span>Menu</span>
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleBackToMenu}
+                  className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
+                >
+                  <span className="text-2xl">←</span>
+                  <span>Menu</span>
+                </button>
+                {currentPageIndex > 0 && (
+                  <button
+                    onClick={handleWritingPreviousPage}
+                    className="text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                  >
+                    <span className="text-xl">◀</span>
+                    <span>Previous</span>
+                  </button>
+                )}
+              </div>
               <span className="text-lg text-gray-600">
                 Page {currentPageIndex + 1} of {totalPages}
               </span>
@@ -772,6 +792,15 @@ export default function Home() {
     );
   }
 
+  // Handle going back to previous page in learn_to_read mode
+  const handlePreviousPage = () => {
+    if (currentPageIndex > 0) {
+      setCurrentPageIndex((prev) => prev - 1);
+      setPhase("intro");
+      setShowChoice(false);
+    }
+  };
+
   // Learn to Read mode (default fallback for existing flow)
   return (
     <main className="min-h-screen p-4 md:p-8">
@@ -786,6 +815,15 @@ export default function Home() {
               <span className="text-xl">←</span>
               <span>Menu</span>
             </button>
+            {currentPageIndex > 0 && (
+              <button
+                onClick={handlePreviousPage}
+                className="text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              >
+                <span className="text-xl">◀</span>
+                <span>Previous Page</span>
+              </button>
+            )}
             <div>
               <h1 className="text-3xl font-bold text-primary">{storybook.title}</h1>
               <p className="text-lg text-gray-500">Learning with {childName}</p>
